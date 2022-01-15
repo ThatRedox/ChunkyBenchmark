@@ -1,0 +1,3 @@
+rootProject.name = 'ChunkyBenchmark'
+include 'io.github.thatredox'
+
