@@ -3,10 +3,8 @@ package io.github.thatredox.chunkybenchmark;
 import it.unimi.dsi.fastutil.Pair;
 import it.unimi.dsi.fastutil.objects.ObjectObjectImmutablePair;
 import org.apache.commons.cli.*;
-import org.apache.commons.math3.stat.descriptive.SummaryStatistics;
 import org.apache.commons.math3.stat.descriptive.moment.Mean;
 import org.apache.commons.math3.stat.descriptive.moment.StandardDeviation;
-import org.apache.commons.math3.stat.inference.TTest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -101,11 +99,13 @@ public class Main {
                     ArrayList<String> launchArgs = new ArrayList<>();
                     launchArgs.add(jvm);
                     launchArgs.add("-cp");
-                    launchArgs.add(String.format("%s;%s", self, f.getPath()));
+                    launchArgs.add(String.format("%s%s%s", self, System.getProperty("path.separator"), f.getPath()));
                     launchArgs.add("io.github.thatredox.chunkybenchmark.Benchmark");
                     launchArgs.addAll(Arrays.asList(args));
                     launchArgs.add("-tempOut");
                     launchArgs.add(tempOut.getAbsolutePath());
+
+                    LOGGER.debug("Running with command: {}", String.join(" ", launchArgs));
 
                     new ProcessBuilder().command(launchArgs).inheritIO().start().waitFor();
 
