@@ -25,6 +25,7 @@ public class Main {
         options.addRequiredOption("l", "libs", true, "Path to folder of Chunky libraries to test.");
         options.addOption("r", "runs", true, "Number of runs through all the libraries.");
         options.addOption("m", "mix", false, "Randomize the test order.");
+        options.addOption(Option.builder("jvm").hasArgs().build());
 
         options.addOption(null, "self", true, "Path to own jar.");
         options.addOption(null, "tempOut", true, "Leave empty.");
@@ -45,6 +46,16 @@ public class Main {
             return;
         }
         LOGGER.info("Run with arguments: {}", String.join("\t", args));
+
+        String[] jvms = null;
+        if (cmd.hasOption("jvm")) {
+            jvms = cmd.getOptionValues("jvm");
+            LOGGER.info("JVMs: {}", String.join(",", jvms));
+        }
+        if (jvms == null) {
+            jvms = new String[] {System.getProperty("java.home") + File.separator + "bin" + File.separator + "java"};
+            LOGGER.info("JVM determined to be: {}", jvms[0]);
+        }
 
         PrintStream outputStream;
         if (cmd.hasOption("o")) {
@@ -71,9 +82,6 @@ public class Main {
             ArrayList<Pair<String, Benchmark.Results>> resultsArray = new ArrayList<>();
             HashMap<String, ArrayList<Benchmark.Results>> resultsMap = new HashMap<>();
 
-            String jvm = System.getProperty("java.home") + File.separator + "bin" + File.separator + "java";
-            LOGGER.info("JVM determined to be: {}", jvm);
-
             File libs = new File(cmd.getOptionValue("l"));
             File[] files = libs.listFiles((dir, name) -> name.endsWith(".jar"));
             if (files == null) {
@@ -81,8 +89,8 @@ public class Main {
                 return;
             }
 
-            String runInfoString = String.format("Testing %d versions %d times each%s.",
-                    files.length, runs, cmd.hasOption("m") ? " with mixing" : "");
+            String runInfoString = String.format("Testing %d versions %d times each on %s JVM(s)%s.",
+                    files.length, runs, jvms.length, cmd.hasOption("m") ? " with mixing" : "");
             LOGGER.info(runInfoString);
             System.out.println(runInfoString);
             for (int i = 0; i < runs; i++) {
@@ -91,41 +99,43 @@ public class Main {
                 }
                 int fCount = 0;
                 for (File f : files) {
-                    System.out.printf("\nRendering %s \t (%d / %d, %d / %d)\n", f.getName(), ++fCount, files.length, i + 1, runs);
+                    for (String jvm : jvms) {
+                        System.out.printf("\nRendering %s \t (%d / %d, %d / %d)\n", f.getName(), ++fCount, files.length * jvms.length, i + 1, runs);
 
-                    File tempOut = File.createTempFile("ChunkyBenchmark", "bin");
-                    tempOut.deleteOnExit();
+                        File tempOut = File.createTempFile("ChunkyBenchmark", "bin");
+                        tempOut.deleteOnExit();
 
-                    ArrayList<String> launchArgs = new ArrayList<>();
-                    launchArgs.add(jvm);
-                    launchArgs.add("-cp");
-                    launchArgs.add(String.format("%s%s%s", self, System.getProperty("path.separator"), f.getPath()));
-                    launchArgs.add("io.github.thatredox.chunkybenchmark.Benchmark");
-                    launchArgs.addAll(Arrays.asList(args));
-                    launchArgs.add("-tempOut");
-                    launchArgs.add(tempOut.getAbsolutePath());
+                        ArrayList<String> launchArgs = new ArrayList<>();
+                        launchArgs.add(jvm);
+                        launchArgs.add("-cp");
+                        launchArgs.add(String.format("%s%s%s", self, System.getProperty("path.separator"), f.getPath()));
+                        launchArgs.add("io.github.thatredox.chunkybenchmark.Benchmark");
+                        launchArgs.addAll(Arrays.asList(args));
+                        launchArgs.add("-tempOut");
+                        launchArgs.add(tempOut.getAbsolutePath());
 
-                    LOGGER.debug("Running with command: {}", String.join(" ", launchArgs));
+                        LOGGER.debug("Running with command: {}", String.join(" ", launchArgs));
 
-                    new ProcessBuilder().command(launchArgs).inheritIO().start().waitFor();
+                        new ProcessBuilder().command(launchArgs).inheritIO().start().waitFor();
 
-                    String key = f.getName();
+                        String key = f.getName() + " - " + jvm;
 
-                    if (!resultsMap.containsKey(key)) {
-                        resultsMap.put(key, new ArrayList<>());
-                    }
+                        if (!resultsMap.containsKey(key)) {
+                            resultsMap.put(key, new ArrayList<>());
+                        }
 
-                    try (DataInputStream tempRead = new DataInputStream(new BufferedInputStream(
-                            new FileInputStream(tempOut)))) {
-                        Benchmark.Results results = Benchmark.Results.load(tempRead);
-                        LOGGER.info("Render {} results: {}", f.getName(), results);
+                        try (DataInputStream tempRead = new DataInputStream(new BufferedInputStream(
+                                new FileInputStream(tempOut)))) {
+                            Benchmark.Results results = Benchmark.Results.load(tempRead);
+                            LOGGER.info("Render {} results: {}", f.getName(), results);
 
-                        resultsArray.add(new ObjectObjectImmutablePair<>(key, results));
-                        resultsMap.get(key).add(results);
-                    }
+                            resultsArray.add(new ObjectObjectImmutablePair<>(key, results));
+                            resultsMap.get(key).add(results);
+                        }
 
-                    if (!tempOut.delete()) {
-                        LOGGER.error("Failed to delete temporary file: {}", tempOut);
+                        if (!tempOut.delete()) {
+                            LOGGER.error("Failed to delete temporary file: {}", tempOut);
+                        }
                     }
                 }
             }
