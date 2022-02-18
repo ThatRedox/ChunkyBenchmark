@@ -1,4 +1,4 @@
-package io.github.thatredox.chunkybenchmark;
+package dev.thatredox.chunky.benchmark;
 
 import org.apache.commons.cli.*;
 import org.apache.commons.math3.stat.descriptive.rank.Median;
@@ -23,7 +23,7 @@ public class Benchmark {
     private final static Logger LOGGER = LoggerFactory.getLogger(Benchmark.class);
     private final static Logger CHUNKY_LOGGER = LoggerFactory.getLogger(Chunky.class);
 
-    public class Slf4jLogReceiver extends Receiver {
+    public static class Slf4jLogReceiver extends Receiver {
         @Override
         public void logEvent(Level level, String s) {
             switch (level) {
@@ -71,15 +71,25 @@ public class Benchmark {
     }
 
     public static void main(String[] args) throws IOException, NoSuchFieldException, IllegalAccessException, InterruptedException {
+        Options options = new Options();
+        options.addOption("t", "textures", true, "Path to the texture pack to use.");
+        options.addRequiredOption("i", "input", true, "Path to the benchmark scene.");
+        options.addOption(null, "threads", true, "Number of threads to use while rendering.");
+        options.addOption("s", "samples", true, "Sample batch size.");
+        options.addOption("b", "batches", true, "Number of sample batches.");
+        options.addOption(null, "tempOut", true, "Leave empty.");
+
         CommandLineParser parser = new DefaultParser();
         CommandLine cmd;
         try {
-            cmd = parser.parse(Main.options, args);
+            cmd = parser.parse(options, args);
         } catch (ParseException e) {
-            new HelpFormatter().printHelp("java -jar ChunkyBenchmark.jar", Main.options);
+            new HelpFormatter().printHelp("java -jar ChunkyBenchmark.jar", options);
             System.exit(128);
             return;
         }
+
+        se.llbit.log.Log.setReceiver(new Slf4jLogReceiver(), Level.ERROR, Level.WARNING, Level.INFO);
 
         int samples = 64;
         if (cmd.hasOption("s")) {

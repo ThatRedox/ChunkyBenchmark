@@ -33,7 +33,7 @@ jar {
 
     manifest {
         attributes (
-                "Main-Class": "io.github.thatredox.chunkybenchmark.Main",
+                "Main-Class": "dev.thatredox.chunky.benchmark.Benchmark",
                 "Multi-Release": true
         )
     }

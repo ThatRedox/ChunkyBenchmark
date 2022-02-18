@@ -1,4 +1,4 @@
-package io.github.thatredox.chunkybenchmark;
+package dev.thatredox.chunky.benchmark;
 
 import it.unimi.dsi.fastutil.Pair;
 import it.unimi.dsi.fastutil.objects.ObjectObjectImmutablePair;
