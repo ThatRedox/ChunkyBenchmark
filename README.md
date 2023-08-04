@@ -1,11 +1,8 @@
 # Chunky Benchmark
-
-## How to run
 1. Build the jar
-2. Run the jar with `--input "esspooltest" --threads 8 --libs "libs/" --self "build/libs/ChunkyBenchmark.jar" -o "test.csv" --runs 100 --mix`
-where input is the input scene, libs is the path to the chunky core libraries to benchmark, self points at the current jar, or can be left out, o is the output file, runs specifies the number of runs, mix specifies if the run order should be randomized.
-3. Wait ⌛
-4. Analyze the results.
+2. Create a python virtual environment and install the requirements
+3. Edit `config.yaml` to match your system settings
+4. Run `main.py`
 
 ## Licensing Stuff
 This project is Copyright 2022, @ThatRedox.

@@ -1,7 +1,8 @@
 package dev.thatredox.chunky.benchmark;
 
-import org.apache.commons.cli.*;
-import org.apache.commons.math3.stat.descriptive.rank.Median;
+import com.google.gson.Gson;
+import dev.thatredox.chunky.benchmark.schema.Config;
+import dev.thatredox.chunky.benchmark.schema.RunResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import se.llbit.chunky.main.Chunky;
@@ -22,6 +23,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public class Benchmark {
     private final static Logger LOGGER = LoggerFactory.getLogger(Benchmark.class);
     private final static Logger CHUNKY_LOGGER = LoggerFactory.getLogger(Chunky.class);
+    private final static Gson GSON = new Gson();
 
     public static class Slf4jLogReceiver extends Receiver {
         @Override
@@ -71,55 +73,29 @@ public class Benchmark {
     }
 
     public static void main(String[] args) throws IOException, NoSuchFieldException, IllegalAccessException, InterruptedException {
-        Options options = new Options();
-        options.addOption("t", "textures", true, "Path to the texture pack to use.");
-        options.addRequiredOption("i", "input", true, "Path to the benchmark scene.");
-        options.addOption(null, "threads", true, "Number of threads to use while rendering.");
-        options.addOption("s", "samples", true, "Sample batch size.");
-        options.addOption("b", "batches", true, "Number of sample batches.");
-        options.addOption(null, "tempOut", true, "Leave empty.");
+        PrintStream out = System.out;
+        System.setOut(new PrintStream(new NullOutputStream()));
 
-        CommandLineParser parser = new DefaultParser();
-        CommandLine cmd;
-        try {
-            cmd = parser.parse(options, args);
-        } catch (ParseException e) {
-            new HelpFormatter().printHelp("java -jar ChunkyBenchmark.jar", options);
+        if (args.length != 1) {
+            System.err.println("Usage: java -jar ChunkyBenchmark.jar <config json>");
             System.exit(128);
             return;
         }
+        Config config = GSON.fromJson(args[0], Config.class);
+        LOGGER.debug("Loaded config: {}", config);
 
         se.llbit.log.Log.setReceiver(new Slf4jLogReceiver(), Level.ERROR, Level.WARNING, Level.INFO);
 
-        int samples = 64;
-        if (cmd.hasOption("s")) {
-            samples = Integer.parseInt(cmd.getOptionValue("s"));
-        }
-        LOGGER.debug("Rendering with {} samples.", samples);
+        ChunkyOptions chunkyOptions = ChunkyOptions.getDefaults();
+        chunkyOptions.renderThreads = config.threads;
+        chunkyOptions.sppPerPass = config.samples;
 
-        int batches = 4;
-        if (cmd.hasOption("b")) {
-            batches = Integer.parseInt(cmd.getOptionValue("b"));
-        }
-        LOGGER.debug("Rendering {} batches.", batches);
-
-        if (cmd.hasOption("t")) {
-            String texturePack = cmd.getOptionValue("t");
-            LOGGER.info("Loading texture pack: {}", texturePack);
-            TexturePackLoader.loadTexturePacks(texturePack, false);
+        if (config.textures != null) {
+            LOGGER.info("Loading texture pack: {}", config.textures);
+            TexturePackLoader.loadTexturePacks(config.textures, false);
         } else {
-            LOGGER.debug("Loading default textures.");
             Chunky.loadDefaultTextures();
         }
-
-        ChunkyOptions chunkyOptions = ChunkyOptions.getDefaults();
-        if (cmd.hasOption("threads")) {
-            chunkyOptions.renderThreads = Integer.parseInt(cmd.getOptionValue("threads"));
-        }
-        LOGGER.debug("Rendering with {} threads.", chunkyOptions.renderThreads);
-
-        chunkyOptions.sppPerPass = samples;
-        LOGGER.debug("Rendering with {} spp per pass.", samples);
 
         Chunky chunky = new Chunky(chunkyOptions);
 
@@ -127,16 +103,16 @@ public class Benchmark {
         chunkyHeadless.setAccessible(true);
         chunkyHeadless.set(chunky, true);
 
-        chunky.getSceneManager().loadScene(cmd.getOptionValue("i"));
+        chunky.getSceneManager().loadScene(config.scene);
         Scene scene = chunky.getSceneManager().getScene();
-        scene.setTargetSpp(samples);
+        scene.setTargetSpp(config.samples);
 
         AtomicLong atomicRenderTime = new AtomicLong();
         AtomicInteger atomicSps = new AtomicInteger();
 
-        Results results = new Results();
+        ArrayList<RunResult> results = new ArrayList<>();
 
-        for (int b = 0; b < batches; b++) {
+        for (int b = 0; b < config.batches; b++) {
             DefaultRenderManager renderer = new DefaultRenderManager(chunky.getRenderContext(), true);
             renderer.setSceneProvider((SceneProvider) chunky.getSceneManager());
             renderer.setSnapshotControl(new SnapshotControl() {
@@ -180,107 +156,17 @@ public class Benchmark {
             renderer.join();
             renderer.shutdown();
 
-            Run run = new Run(samples * (b + 1), samples, atomicSps.get(), atomicRenderTime.get());
+            RunResult run = new RunResult(config.samples * (b + 1), config.samples, atomicSps.get(), atomicRenderTime.get());
             LOGGER.debug("{}", run);
-            results.runs.add(run);
-            System.out.println(run);
+            results.add(run);
         }
 
-        if (cmd.hasOption("tempOut")) {
-            try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(
-                    new FileOutputStream(cmd.getOptionValue("tempOut"))))) {
-                results.store(out);
-            }
-        } else {
-            LOGGER.error("Output file not specified.");
+        out.println(GSON.toJson(results));
+
+        if (config.save != null) {
+            scene.saveSnapshot(new File(config.save), TaskTracker.NONE, config.threads);
         }
 
         System.exit(0);
-    }
-
-    public static class Run {
-        /**
-         * Total samples rendered since the JVM was started.
-         */
-        public final int totalSamples;
-        /**
-         * Total samples rendered in this run.
-         */
-        public final int runSamples;
-        /**
-         * Samples per second of this run.
-         */
-        public final int samplesPerSecond;
-        /**
-         * Render time of this run in milliseconds.
-         */
-        public final long renderTime;
-
-        public Run(int totalSamples, int runSamples, int samplesPerSecond, long renderTime) {
-            this.totalSamples = totalSamples;
-            this.runSamples = runSamples;
-            this.samplesPerSecond = samplesPerSecond;
-            this.renderTime = renderTime;
-        }
-
-        public static Run load(DataInputStream in) throws IOException {
-            int totalSamples = in.readInt();
-            int runSamples = in.readInt();
-            int samplesPerSecond = in.readInt();
-            long renderTime = in.readLong();
-            return new Run(totalSamples, runSamples, samplesPerSecond, renderTime);
-        }
-
-        public void store(DataOutputStream out) throws IOException {
-            out.writeInt(totalSamples);
-            out.writeInt(runSamples);
-            out.writeInt(samplesPerSecond);
-            out.writeLong(renderTime);
-        }
-
-        @Override
-        public String toString() {
-            return String.format("Run: %4d total samples. %4d run samples. %8d samples per second. %d milliseconds.",
-                    totalSamples, runSamples, samplesPerSecond, renderTime);
-        }
-    }
-
-    public static class Results {
-        public final ArrayList<Run> runs = new ArrayList<>();
-
-        public double getMedianSps() {
-            Median median = new Median();
-            median.setData(runs.stream().mapToDouble(run -> run.samplesPerSecond).toArray());
-            return median.evaluate();
-        }
-
-        public void store(DataOutputStream out) throws IOException {
-            out.writeInt(runs.size());
-            for (Run run : runs) {
-                run.store(out);
-            }
-        }
-
-        public static Results load(DataInputStream in) throws IOException {
-            Results res = new Results();
-            int size = in.readInt();
-            res.runs.ensureCapacity(size);
-            for (int i = 0; i < size; i++) {
-                res.runs.add(Run.load(in));
-            }
-            return res;
-        }
-
-        @Override
-        public String toString() {
-            StringBuilder builder = new StringBuilder();
-            builder.append(String.format("%d runs:\n", runs.size()));
-            runs.forEach(run -> {
-                builder.append('\t');
-                builder.append(run.toString());
-                builder.append('\n');
-            });
-            return builder.toString();
-        }
     }
 }

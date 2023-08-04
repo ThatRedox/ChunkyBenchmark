@@ -1,0 +1,8 @@
+jvm: C:\Program Files\Eclipse Foundation\jdk-17.0.0.35-hotspot\bin\java.exe
+chunky: "../java/libs/chunky-core-2.4.0.jar"
+runner: "../java/build/libs/ChunkyBenchmark.jar"
+scene: "Greenfield Outdoors"
+save: "out/render.png"
+threads: 8
+samples: 4
+batches: 5
